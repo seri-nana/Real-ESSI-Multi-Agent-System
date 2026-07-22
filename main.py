@@ -2,6 +2,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 
 from retrieval import retrieve_information
 from answer import generate_answer
@@ -96,8 +97,7 @@ def main():
 
     system_start = time.perf_counter()
 
-    # Agent 1:
-
+    # Agent 1
     print("\n[1/3] Running Retrieval Agent...")
 
     retrieval_result, retrieval_stats = retrieve_information(
@@ -106,7 +106,6 @@ def main():
     )
 
     # Agent 2
-
     print("[2/3] Running Generator Agent...")
 
     answer, generator_stats = generate_answer(
@@ -115,7 +114,6 @@ def main():
     )
 
     # Agent 3
-
     print("[3/3] Running Critic Agent...")
 
     critique, critic_stats = critique_answer(
@@ -125,15 +123,23 @@ def main():
 
     system_runtime = time.perf_counter() - system_start
 
-    # final answer
+    # Extract the critic's accuracy score
+    score_match = re.search(
+        r"Accuracy Score:\s*(\d+)",
+        critique,
+        re.IGNORECASE
+    )
 
+    # Final answer
     print("\n==============================")
     print("FINAL ANSWER")
     print("==============================")
     print(answer)
 
-    # stats:
+    if score_match:
+        print(f"\nCritic Accuracy Score: {score_match.group(1)}%")
 
+    # Stats
     all_stats = [
         retrieval_stats,
         generator_stats,
@@ -325,4 +331,4 @@ def run_pipeline(question):
 
 
 if __name__ == "__main__":
-    main().
+    main()
