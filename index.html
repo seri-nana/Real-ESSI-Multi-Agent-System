@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Real-ESSI Assistant</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:        #0f2347;
+      --navy-hover:  #1a3460;
+      --navy-light:  #1e3d6e;
+      --accent:      #2a5298;
+      --white:       #ffffff;
+      --bg:          #f7f8fa;
+      --border:      #dde3ef;
+      --text:        #0f2347;
+      --muted:       #6b7a99;
+      --approved:    #1a7a4a;
+      --approved-bg: #eaf6f0;
+      --flagged:     #b84040;
+      --flagged-bg:  #fdf0f0;
+      --sidebar-w:   260px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: var(--sidebar-w);
+      background: var(--navy);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      padding: 16px 12px;
+      gap: 8px;
+    }
+
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      margin-bottom: 4px;
+    }
+
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .logo-icon svg { width: 18px; height: 18px; fill: white; }
+
+    .logo-text {
+      font-size: 14px;
+      font-weight: 700;
+      color: white;
+      line-height: 1.2;
+    }
+    .logo-sub {
+      font-size: 10px;
+      color: rgba(255,255,255,0.5);
+      font-weight: 400;
+      letter-spacing: 0.03em;
+    }
+
+    .new-chat-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      color: white;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s;
+      width: 100%;
+    }
+    .new-chat-btn:hover { background: rgba(255,255,255,0.14); }
+    .new-chat-btn svg { width: 15px; height: 15px; stroke: white; fill: none; flex-shrink: 0; }
+
+    .sidebar-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.35);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 10px 4px;
+    }
+
+    .history-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .history-item {
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      color: rgba(255,255,255,0.65);
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: background 0.12s, color 0.12s;
+    }
+    .history-item:hover, .history-item.active {
+      background: rgba(255,255,255,0.1);
+      color: white;
+    }
+
+    .sidebar-footer {
+      border-top: 1px solid rgba(255,255,255,0.1);
+      padding-top: 12px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      line-height: 1.5;
+      padding-left: 4px;
+    }
+
+    /* ── Main ── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--white);
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--white);
+      flex-shrink: 0;
+    }
+    .header-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--navy);
+    }
+    .header-badge {
+      font-size: 10px;
+      font-weight: 600;
+      background: var(--navy);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 20px;
+      letter-spacing: 0.04em;
+    }
+    .header-model {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--bg);
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+    }
+
+    /* Messages */
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    /* Empty state */
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .empty-icon {
+      width: 56px;
+      height: 56px;
+      background: var(--navy);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .empty-icon svg { width: 28px; height: 28px; fill: white; }
+    .empty-title { font-size: 20px; font-weight: 700; color: var(--navy); }
+    .empty-sub { font-size: 14px; color: var(--muted); max-width: 340px; line-height: 1.6; }
+    .example-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 8px;
+    }
+    .chip {
+      padding: 8px 16px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 12.5px;
+      color: var(--navy);
+      cursor: pointer;
+      background: var(--white);
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .chip:hover { background: var(--bg); border-color: var(--accent); }
+
+    /* Message row */
+    .msg-row {
+      display: flex;
+      gap: 14px;
+      max-width: 780px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .msg-row.user { flex-direction: row-reverse; }
+
+    .avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .avatar.user-av { background: var(--navy); color: white; }
+    .avatar.bot-av  { background: var(--accent); color: white; }
+    .avatar svg { width: 17px; height: 17px; fill: white; }
+
+    .bubble-wrap { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+    .msg-row.user .bubble-wrap { align-items: flex-end; }
+
+    .bubble {
+      padding: 12px 16px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.65;
+      max-width: 100%;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .bubble.user   { background: var(--navy); color: white; border-bottom-right-radius: 4px; }
+    .bubble.bot    { background: var(--bg); color: var(--text); border-bottom-left-radius: 4px; border: 1px solid var(--border); }
+    .bubble.status { background: transparent; color: var(--muted); font-size: 13px; border: none; padding: 4px 0; display: flex; align-items: center; gap: 8px; }
+
+    /* Spinner */
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Critique card */
+    .critique-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      font-size: 13px;
+    }
+    .critique-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 14px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      gap: 10px;
+    }
+    .critique-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .critique-label svg { width: 12px; height: 12px; stroke: var(--muted); fill: none; }
+    .status-pill {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 10px;
+      border-radius: 20px;
+      letter-spacing: 0.05em;
+    }
+    .status-pill.approved { background: var(--approved-bg); color: var(--approved); }
+    .status-pill.flagged  { background: var(--flagged-bg);  color: var(--flagged); }
+    .critique-body { padding: 10px 14px; color: var(--text); line-height: 1.55; white-space: pre-wrap; }
+
+    /* Stats table */
+    .stats-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      font-size: 12px;
+    }
+    .stats-card-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .stats-card-header svg { width: 12px; height: 12px; stroke: var(--muted); fill: none; }
+    .stats-toggle { margin-left: auto; transition: transform 0.2s; }
+    .stats-toggle.open { transform: rotate(180deg); }
+    .stats-table-wrap { overflow-x: auto; }
+    table.stats-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11.5px;
+    }
+    .stats-table th {
+      text-align: right;
+      padding: 6px 12px;
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .stats-table th:first-child { text-align: left; }
+    .stats-table td {
+      text-align: right;
+      padding: 7px 12px;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .stats-table td:first-child { text-align: left; font-weight: 600; text-transform: capitalize; }
+    .stats-table tr:last-child td { border-bottom: none; }
+    .stats-table tr.total-row td {
+      background: var(--bg);
+      font-weight: 700;
+      border-top: 1px solid var(--border);
+      color: var(--navy);
+    }
+    .co2-val { color: #3a7a4a; }
+
+    /* Input */
+    .input-area {
+      padding: 16px 24px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--white);
+      flex-shrink: 0;
+    }
+    .input-box {
+      max-width: 780px;
+      margin: 0 auto;
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 12px;
+      transition: border-color 0.15s;
+    }
+    .input-box:focus-within { border-color: var(--accent); }
+    textarea {
+      flex: 1;
+      border: none;
+      background: transparent;
+      resize: none;
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--text);
+      outline: none;
+      max-height: 180px;
+      line-height: 1.55;
+      padding: 2px 0;
+    }
+    textarea::placeholder { color: var(--muted); }
+    .send-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      border: none;
+      background: var(--navy);
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .send-btn:hover:not(:disabled) { background: var(--navy-hover); }
+    .send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .send-btn svg { width: 16px; height: 16px; fill: white; }
+    .input-hint {
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    /* Scrollbar */
+    .messages::-webkit-scrollbar { width: 5px; }
+    .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+    </div>
+    <div>
+      <div class="logo-text">Real-ESSI</div>
+      <div class="logo-sub">Multi-Agent Assistant</div>
+    </div>
+  </div>
+
+  <button class="new-chat-btn" onclick="newChat()">
+    <svg viewBox="0 0 24 24" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    New conversation
+  </button>
+
+  <div class="sidebar-label">Recent</div>
+  <div class="history-list" id="historyList"></div>
+
+  <div class="sidebar-footer">
+    Retrieval · GPT-4o mini · Perplexity Sonar
+  </div>
+</aside>
+
+<!-- Main -->
+<main class="main">
+  <header class="header">
+    <div class="header-title">Real-ESSI Assistant</div>
+    <span class="header-badge">3 Agents</span>
+    <span class="header-model">GPT-4o mini + Sonar</span>
+  </header>
+
+  <div class="messages" id="messages">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+      </div>
+      <div class="empty-title">Ask about Real-ESSI</div>
+      <div class="empty-sub">Query the Real-ESSI lecture notes. Your question is retrieved, answered by GPT-4o mini, then evaluated by Perplexity Sonar.</div>
+      <div class="example-chips">
+        <span class="chip" onclick="useExample(this)">What is the domain reduction method?</span>
+        <span class="chip" onclick="useExample(this)">Explain boundary conditions in Real-ESSI</span>
+        <span class="chip" onclick="useExample(this)">How does the finite element method work here?</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="input-box">
+      <textarea id="questionInput" rows="1" placeholder="Ask about Real-ESSI lecture notes…" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+        <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+      </button>
+    </div>
+    <div class="input-hint">Searches a Real-ESSI vector store · answers via GPT-4o mini · verified by Sonar</div>
+  </div>
+</main>
+
+<script>
+  let busy = false;
+  const history = [];
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 180) + 'px';
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function useExample(el) {
+    document.getElementById('questionInput').value = el.textContent;
+    autoResize(document.getElementById('questionInput'));
+    sendMessage();
+  }
+
+  function newChat() {
+    if (busy) return;
+    document.getElementById('messages').innerHTML = '';
+    document.getElementById('messages').appendChild(buildEmptyState());
+    document.getElementById('questionInput').value = '';
+  }
+
+  function buildEmptyState() {
+    const div = document.createElement('div');
+    div.className = 'empty-state';
+    div.id = 'emptyState';
+    div.innerHTML = `
+      <div class="empty-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+      </div>
+      <div class="empty-title">Ask about Real-ESSI</div>
+      <div class="empty-sub">Query the Real-ESSI lecture notes. Your question is retrieved, answered by GPT-4o mini, then evaluated by Perplexity Sonar.</div>
+      <div class="example-chips">
+        <span class="chip" onclick="useExample(this)">What is the domain reduction method?</span>
+        <span class="chip" onclick="useExample(this)">Explain boundary conditions in Real-ESSI</span>
+        <span class="chip" onclick="useExample(this)">How does the finite element method work here?</span>
+      </div>`;
+    return div;
+  }
+
+  function scrollBottom() {
+    const m = document.getElementById('messages');
+    m.scrollTop = m.scrollHeight;
+  }
+
+  function appendUserBubble(text) {
+    const empty = document.getElementById('emptyState');
+    if (empty) empty.remove();
+
+    const row = document.createElement('div');
+    row.className = 'msg-row user';
+    row.innerHTML = `
+      <div class="avatar user-av">You</div>
+      <div class="bubble-wrap">
+        <div class="bubble user">${escHtml(text)}</div>
+      </div>`;
+    document.getElementById('messages').appendChild(row);
+    scrollBottom();
+    return row;
+  }
+
+  function appendBotRow() {
+    const row = document.createElement('div');
+    row.className = 'msg-row';
+    row.innerHTML = `
+      <div class="avatar bot-av">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+      </div>
+      <div class="bubble-wrap" id="botWrap"></div>`;
+    document.getElementById('messages').appendChild(row);
+    scrollBottom();
+    return document.getElementById('botWrap');
+  }
+
+  function setStatus(wrap, text) {
+    let s = wrap.querySelector('.bubble.status');
+    if (!s) {
+      s = document.createElement('div');
+      s.className = 'bubble status';
+      wrap.appendChild(s);
+    }
+    s.innerHTML = `<div class="spinner"></div>${escHtml(text)}`;
+    scrollBottom();
+  }
+
+  function clearStatus(wrap) {
+    const s = wrap.querySelector('.bubble.status');
+    if (s) s.remove();
+  }
+
+  function renderComplete(wrap, data) {
+    clearStatus(wrap);
+
+    // Answer bubble
+    const ans = document.createElement('div');
+    ans.className = 'bubble bot';
+    ans.textContent = data.answer;
+    wrap.appendChild(ans);
+
+    // Critique card
+    const critiqueText = data.critique || '';
+    const approved = /status:\s*APPROVED/i.test(critiqueText);
+    const flagged  = /status:\s*FLAGGED/i.test(critiqueText);
+    const scoreMatch = critiqueText.match(/accuracy score:\s*(\d+)/i);
+    const score = scoreMatch ? scoreMatch[1] + '%' : null;
+
+    const card = document.createElement('div');
+    card.className = 'critique-card';
+    const pillClass = approved ? 'approved' : flagged ? 'flagged' : '';
+    const pillText  = approved ? 'APPROVED' : flagged ? 'FLAGGED' : 'EVALUATED';
+    const scoreHtml = score ? `<span class="stat-chip">${score} accuracy</span>` : '';
+
+    card.innerHTML = `
+      <div class="critique-header">
+        <span class="critique-label">
+          <svg viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Critic · Perplexity Sonar
+        </span>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${scoreHtml}
+          ${pillClass ? `<span class="status-pill ${pillClass}">${pillText}</span>` : ''}
+        </div>
+      </div>
+      <div class="critique-body">${escHtml(critiqueText)}</div>`;
+    wrap.appendChild(card);
+
+    // Stats table (matches every line main.py's print_stats() would print)
+    if (data.stats) {
+      const { agents, system } = data.stats;
+
+      const card = document.createElement('div');
+      card.className = 'stats-card';
+
+      // collapsible header
+      const hdr = document.createElement('div');
+      hdr.className = 'stats-card-header';
+      hdr.innerHTML = `
+        <svg viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        System Statistics &nbsp;·&nbsp; ${data.chunks} chunks retrieved
+        <svg class="stats-toggle" viewBox="0 0 24 24" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
+      card.appendChild(hdr);
+
+      const body = document.createElement('div');
+      body.className = 'stats-table-wrap';
+
+      const rows = agents.map(a => `
+        <tr>
+          <td>${a.agent}</td>
+          <td>${a.runtime.toFixed(2)}s</td>
+          <td>${a.input_tokens.toLocaleString()}</td>
+          <td>${a.output_tokens.toLocaleString()}</td>
+          <td>${a.total_tokens.toLocaleString()}</td>
+          <td>$${a.cost.toFixed(8)}</td>
+          <td class="co2-val">${a.co2.toFixed(8)} kg</td>
+        </tr>`).join('');
+
+      body.innerHTML = `
+        <table class="stats-table">
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th>Runtime</th>
+              <th>Input Tokens</th>
+              <th>Output Tokens</th>
+              <th>Total Tokens</th>
+              <th>Cost</th>
+              <th>Est. CO₂</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+            <tr class="total-row">
+              <td>Total System</td>
+              <td>${system.runtime.toFixed(2)}s</td>
+              <td>${system.input_tokens.toLocaleString()}</td>
+              <td>${system.output_tokens.toLocaleString()}</td>
+              <td>${system.total_tokens.toLocaleString()}</td>
+              <td>$${system.cost.toFixed(8)}</td>
+              <td class="co2-val">${system.co2.toFixed(8)} kg</td>
+            </tr>
+          </tbody>
+        </table>`;
+
+      card.appendChild(body);
+
+      // toggle collapse
+      let open = true;
+      hdr.addEventListener('click', () => {
+        open = !open;
+        body.style.display = open ? '' : 'none';
+        hdr.querySelector('.stats-toggle').classList.toggle('open', open);
+      });
+      hdr.querySelector('.stats-toggle').classList.add('open');
+
+      wrap.appendChild(card);
+    }
+
+    scrollBottom();
+  }
+
+  function renderError(wrap, msg) {
+    clearStatus(wrap);
+    const b = document.createElement('div');
+    b.className = 'bubble bot';
+    b.style.borderColor = '#e0b0b0';
+    b.style.background = '#fff5f5';
+    b.style.color = '#b84040';
+    b.textContent = '⚠ ' + msg;
+    wrap.appendChild(b);
+    scrollBottom();
+  }
+
+  async function sendMessage() {
+    if (busy) return;
+    const input = document.getElementById('questionInput');
+    const question = input.value.trim();
+    if (!question) return;
+
+    busy = true;
+    document.getElementById('sendBtn').disabled = true;
+    input.value = '';
+    input.style.height = 'auto';
+
+    // Add to sidebar history
+    addHistory(question);
+
+    appendUserBubble(question);
+    const botWrap = appendBotRow();
+    setStatus(botWrap, 'Searching Real-ESSI notes…');
+
+    try {
+      const resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question }),
+      });
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop();
+        for (const part of parts) {
+          if (!part.startsWith('data:')) continue;
+          const json = part.replace(/^data:\s*/, '');
+          try {
+            const msg = JSON.parse(json);
+            if (msg.type === 'status')   setStatus(botWrap, msg.message);
+            if (msg.type === 'complete') renderComplete(botWrap, msg);
+            if (msg.type === 'error')    renderError(botWrap, msg.message);
+          } catch {}
+        }
+      }
+    } catch (err) {
+      renderError(botWrap, 'Network error: ' + err.message);
+    }
+
+    busy = false;
+    document.getElementById('sendBtn').disabled = false;
+    input.focus();
+  }
+
+  function addHistory(q) {
+    const list = document.getElementById('historyList');
+    const item = document.createElement('div');
+    item.className = 'history-item active';
+    item.textContent = q;
+    // deactivate others
+    list.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
+    list.insertBefore(item, list.firstChild);
+    history.unshift(q);
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+</script>
+</body>
+</html>
