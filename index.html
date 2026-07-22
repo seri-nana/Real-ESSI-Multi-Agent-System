@@ -119,15 +119,38 @@
       font-size: 12.5px;
       color: rgba(255,255,255,0.65);
       cursor: pointer;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
       transition: background 0.12s, color 0.12s;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
     }
     .history-item:hover, .history-item.active {
       background: rgba(255,255,255,0.1);
       color: white;
     }
+    .history-item-q {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.4;
+    }
+    .history-item-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      color: rgba(255,255,255,0.35);
+    }
+    .history-pill {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 10px;
+      letter-spacing: 0.04em;
+    }
+    .history-pill.approved { background: rgba(26,122,74,0.35); color: #7ddfaa; }
+    .history-pill.flagged  { background: rgba(184,64,64,0.35); color: #f09090; }
+    .history-pill.pending  { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.4); }
 
     .sidebar-footer {
       border-top: 1px solid rgba(255,255,255,0.1);
@@ -465,7 +488,7 @@
     New conversation
   </button>
 
-  <div class="sidebar-label">Recent</div>
+  <div class="sidebar-label" id="recentLabel" style="display:none">Recent</div>
   <div class="history-list" id="historyList"></div>
 
   <div class="sidebar-footer">
@@ -509,7 +532,8 @@
 
 <script>
   let busy = false;
-  const history = [];
+
+  // ── Utilities ──────────────────────────────────────────────
 
   function autoResize(el) {
     el.style.height = 'auto';
@@ -517,10 +541,7 @@
   }
 
   function handleKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   }
 
   function useExample(el) {
@@ -529,8 +550,27 @@
     sendMessage();
   }
 
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function scrollBottom() {
+    const m = document.getElementById('messages');
+    m.scrollTop = m.scrollHeight;
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { month:'short', day:'numeric' })
+         + ' ' + d.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
+  }
+
+  // ── Empty state ────────────────────────────────────────────
+
   function newChat() {
     if (busy) return;
+    setActiveHistoryItem(null);
     document.getElementById('messages').innerHTML = '';
     document.getElementById('messages').appendChild(buildEmptyState());
     document.getElementById('questionInput').value = '';
@@ -554,15 +594,119 @@
     return div;
   }
 
-  function scrollBottom() {
-    const m = document.getElementById('messages');
-    m.scrollTop = m.scrollHeight;
+  // ── Sidebar history ────────────────────────────────────────
+
+  function setActiveHistoryItem(runId) {
+    document.querySelectorAll('.history-item').forEach(el => {
+      el.classList.toggle('active', runId !== null && el.dataset.runId === runId);
+    });
   }
+
+  function buildHistoryItem(meta) {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+    item.dataset.runId = meta.run_id || '';
+
+    const pillClass = meta.status === 'APPROVED' ? 'approved'
+                    : meta.status === 'FLAGGED'   ? 'flagged' : 'pending';
+    const pillText  = meta.status || 'pending';
+    const scoreText = meta.score != null ? `${meta.score}%` : '';
+    const dateText  = fmtDate(meta.timestamp);
+
+    item.innerHTML = `
+      <div class="history-item-q">${escHtml(meta.question || '')}</div>
+      <div class="history-item-meta">
+        <span class="history-pill ${pillClass}">${pillText}</span>
+        ${scoreText ? `<span>${scoreText}</span>` : ''}
+        ${dateText  ? `<span>${dateText}</span>`  : ''}
+      </div>`;
+
+    if (meta.run_id) {
+      item.addEventListener('click', () => loadRun(meta.run_id));
+    }
+    return item;
+  }
+
+  async function fetchHistory() {
+    try {
+      const res = await fetch('/api/history');
+      const runs = await res.json();
+      const list  = document.getElementById('historyList');
+      const label = document.getElementById('recentLabel');
+      list.innerHTML = '';
+      if (runs.length) {
+        label.style.display = '';
+        runs.forEach(meta => list.appendChild(buildHistoryItem(meta)));
+      }
+    } catch {}
+  }
+
+  // Add a pending item at the top while a run is in progress, return the element
+  function addPendingHistoryItem(question) {
+    const list  = document.getElementById('historyList');
+    const label = document.getElementById('recentLabel');
+    label.style.display = '';
+    setActiveHistoryItem(null);
+    const item = buildHistoryItem({ question, status: 'pending', run_id: '' });
+    item.classList.add('active');
+    list.insertBefore(item, list.firstChild);
+    return item;
+  }
+
+  // Update the pending item once we have a real run_id and status
+  function resolveHistoryItem(item, meta) {
+    const updated = buildHistoryItem(meta);
+    updated.classList.add('active');
+    item.replaceWith(updated);
+    setActiveHistoryItem(meta.run_id);
+  }
+
+  // ── Load a saved run ───────────────────────────────────────
+
+  async function loadRun(runId) {
+    if (busy) return;
+    setActiveHistoryItem(runId);
+
+    const msgs = document.getElementById('messages');
+    msgs.innerHTML = '';
+
+    // show loading state
+    const loadingRow = document.createElement('div');
+    loadingRow.className = 'msg-row';
+    loadingRow.innerHTML = `
+      <div class="avatar bot-av">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+      </div>
+      <div class="bubble-wrap">
+        <div class="bubble status"><div class="spinner"></div>Loading saved run…</div>
+      </div>`;
+    msgs.appendChild(loadingRow);
+
+    try {
+      const res = await fetch(`/api/history/${runId}`);
+      if (!res.ok) throw new Error('Not found');
+      const run = await res.json();
+
+      msgs.innerHTML = '';
+      appendUserBubble(run.question);
+      const wrap = appendBotRow();
+      renderComplete(wrap, {
+        answer:   run.answer,
+        critique: run.critique,
+        chunks:   run.metadata?.chunks || '—',
+        stats:    run.stats,
+      });
+    } catch {
+      msgs.innerHTML = '';
+      msgs.appendChild(buildEmptyState());
+    }
+  }
+
+  // ── Message rendering ──────────────────────────────────────
 
   function appendUserBubble(text) {
     const empty = document.getElementById('emptyState');
     if (empty) empty.remove();
-
     const row = document.createElement('div');
     row.className = 'msg-row user';
     row.innerHTML = `
@@ -572,7 +716,6 @@
       </div>`;
     document.getElementById('messages').appendChild(row);
     scrollBottom();
-    return row;
   }
 
   function appendBotRow() {
@@ -590,11 +733,7 @@
 
   function setStatus(wrap, text) {
     let s = wrap.querySelector('.bubble.status');
-    if (!s) {
-      s = document.createElement('div');
-      s.className = 'bubble status';
-      wrap.appendChild(s);
-    }
+    if (!s) { s = document.createElement('div'); s.className = 'bubble status'; wrap.appendChild(s); }
     s.innerHTML = `<div class="spinner"></div>${escHtml(text)}`;
     scrollBottom();
   }
@@ -607,7 +746,7 @@
   function renderComplete(wrap, data) {
     clearStatus(wrap);
 
-    // Answer bubble
+    // Answer
     const ans = document.createElement('div');
     ans.className = 'bubble bot';
     ans.textContent = data.answer;
@@ -615,18 +754,17 @@
 
     // Critique card
     const critiqueText = data.critique || '';
-    const approved = /status:\s*APPROVED/i.test(critiqueText);
-    const flagged  = /status:\s*FLAGGED/i.test(critiqueText);
+    const approved  = /status:\s*APPROVED/i.test(critiqueText);
+    const flagged   = /status:\s*FLAGGED/i.test(critiqueText);
     const scoreMatch = critiqueText.match(/accuracy score:\s*(\d+)/i);
-    const score = scoreMatch ? scoreMatch[1] + '%' : null;
-
-    const card = document.createElement('div');
-    card.className = 'critique-card';
+    const score     = scoreMatch ? scoreMatch[1] + '%' : null;
     const pillClass = approved ? 'approved' : flagged ? 'flagged' : '';
-    const pillText  = approved ? 'APPROVED' : flagged ? 'FLAGGED' : 'EVALUATED';
+    const pillText  = approved ? 'APPROVED'  : flagged ? 'FLAGGED'  : 'EVALUATED';
     const scoreHtml = score ? `<span class="stat-chip">${score} accuracy</span>` : '';
 
-    card.innerHTML = `
+    const critiqueCard = document.createElement('div');
+    critiqueCard.className = 'critique-card';
+    critiqueCard.innerHTML = `
       <div class="critique-header">
         <span class="critique-label">
           <svg viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -638,53 +776,42 @@
         </div>
       </div>
       <div class="critique-body">${escHtml(critiqueText)}</div>`;
-    wrap.appendChild(card);
+    wrap.appendChild(critiqueCard);
 
-    // Stats table (matches every line main.py's print_stats() would print)
-    if (data.stats) {
+    // Stats table
+    if (data.stats && data.stats.agents) {
       const { agents, system } = data.stats;
+      const statsCard = document.createElement('div');
+      statsCard.className = 'stats-card';
 
-      const card = document.createElement('div');
-      card.className = 'stats-card';
-
-      // collapsible header
       const hdr = document.createElement('div');
       hdr.className = 'stats-card-header';
       hdr.innerHTML = `
         <svg viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
         System Statistics &nbsp;·&nbsp; ${data.chunks} chunks retrieved
         <svg class="stats-toggle" viewBox="0 0 24 24" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>`;
-      card.appendChild(hdr);
+      statsCard.appendChild(hdr);
 
       const body = document.createElement('div');
       body.className = 'stats-table-wrap';
-
-      const rows = agents.map(a => `
-        <tr>
-          <td>${a.agent}</td>
-          <td>${a.runtime.toFixed(2)}s</td>
-          <td>${a.input_tokens.toLocaleString()}</td>
-          <td>${a.output_tokens.toLocaleString()}</td>
-          <td>${a.total_tokens.toLocaleString()}</td>
-          <td>$${a.cost.toFixed(8)}</td>
-          <td class="co2-val">${a.co2.toFixed(8)} kg</td>
-        </tr>`).join('');
-
       body.innerHTML = `
         <table class="stats-table">
           <thead>
             <tr>
-              <th>Agent</th>
-              <th>Runtime</th>
-              <th>Input Tokens</th>
-              <th>Output Tokens</th>
-              <th>Total Tokens</th>
-              <th>Cost</th>
-              <th>Est. CO₂</th>
+              <th>Agent</th><th>Runtime</th><th>Input Tokens</th>
+              <th>Output Tokens</th><th>Total Tokens</th><th>Cost</th><th>Est. CO₂</th>
             </tr>
           </thead>
           <tbody>
-            ${rows}
+            ${agents.map(a => `<tr>
+              <td>${a.agent}</td>
+              <td>${a.runtime.toFixed(2)}s</td>
+              <td>${a.input_tokens.toLocaleString()}</td>
+              <td>${a.output_tokens.toLocaleString()}</td>
+              <td>${a.total_tokens.toLocaleString()}</td>
+              <td>$${a.cost.toFixed(8)}</td>
+              <td class="co2-val">${a.co2.toFixed(8)} kg</td>
+            </tr>`).join('')}
             <tr class="total-row">
               <td>Total System</td>
               <td>${system.runtime.toFixed(2)}s</td>
@@ -696,10 +823,8 @@
             </tr>
           </tbody>
         </table>`;
+      statsCard.appendChild(body);
 
-      card.appendChild(body);
-
-      // toggle collapse
       let open = true;
       hdr.addEventListener('click', () => {
         open = !open;
@@ -707,8 +832,7 @@
         hdr.querySelector('.stats-toggle').classList.toggle('open', open);
       });
       hdr.querySelector('.stats-toggle').classList.add('open');
-
-      wrap.appendChild(card);
+      wrap.appendChild(statsCard);
     }
 
     scrollBottom();
@@ -718,13 +842,13 @@
     clearStatus(wrap);
     const b = document.createElement('div');
     b.className = 'bubble bot';
-    b.style.borderColor = '#e0b0b0';
-    b.style.background = '#fff5f5';
-    b.style.color = '#b84040';
+    b.style.cssText = 'border-color:#e0b0b0;background:#fff5f5;color:#b84040';
     b.textContent = '⚠ ' + msg;
     wrap.appendChild(b);
     scrollBottom();
   }
+
+  // ── Send a message ─────────────────────────────────────────
 
   async function sendMessage() {
     if (busy) return;
@@ -737,12 +861,13 @@
     input.value = '';
     input.style.height = 'auto';
 
-    // Add to sidebar history
-    addHistory(question);
+    const pendingItem = addPendingHistoryItem(question);
 
     appendUserBubble(question);
     const botWrap = appendBotRow();
     setStatus(botWrap, 'Searching Real-ESSI notes…');
+
+    let completedData = null;
 
     try {
       const resp = await fetch('/api/chat', {
@@ -751,7 +876,7 @@
         body: JSON.stringify({ question }),
       });
 
-      const reader = resp.body.getReader();
+      const reader  = resp.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
 
@@ -763,11 +888,10 @@
         buffer = parts.pop();
         for (const part of parts) {
           if (!part.startsWith('data:')) continue;
-          const json = part.replace(/^data:\s*/, '');
           try {
-            const msg = JSON.parse(json);
+            const msg = JSON.parse(part.replace(/^data:\s*/, ''));
             if (msg.type === 'status')   setStatus(botWrap, msg.message);
-            if (msg.type === 'complete') renderComplete(botWrap, msg);
+            if (msg.type === 'complete') { renderComplete(botWrap, msg); completedData = msg; }
             if (msg.type === 'error')    renderError(botWrap, msg.message);
           } catch {}
         }
@@ -776,25 +900,28 @@
       renderError(botWrap, 'Network error: ' + err.message);
     }
 
+    // Update sidebar item with real run_id and status
+    if (completedData?.run_id) {
+      const critiqueText = completedData.critique || '';
+      const approved = /status:\s*APPROVED/i.test(critiqueText);
+      const flagged  = /status:\s*FLAGGED/i.test(critiqueText);
+      const scoreMatch = critiqueText.match(/accuracy score:\s*(\d+)/i);
+      resolveHistoryItem(pendingItem, {
+        run_id:    completedData.run_id,
+        question,
+        status:    approved ? 'APPROVED' : flagged ? 'FLAGGED' : 'UNKNOWN',
+        score:     scoreMatch ? parseInt(scoreMatch[1]) : null,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     busy = false;
     document.getElementById('sendBtn').disabled = false;
     input.focus();
   }
 
-  function addHistory(q) {
-    const list = document.getElementById('historyList');
-    const item = document.createElement('div');
-    item.className = 'history-item active';
-    item.textContent = q;
-    // deactivate others
-    list.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
-    list.insertBefore(item, list.firstChild);
-    history.unshift(q);
-  }
-
-  function escHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
+  // ── Boot ───────────────────────────────────────────────────
+  fetchHistory();
 </script>
 </body>
 </html>
